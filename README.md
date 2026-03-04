@@ -43,7 +43,7 @@ You can also save a GitHub token so the agent can access private repos and post 
 ## Running locally
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/pr-review-agent.git
+git clone https://github.com/TalhaMasood-0/cf_ai_pr_review_agent.git
 cd pr-review-agent
 npm install
 npm start

@@ -542,8 +542,8 @@ function Chat() {
                   </p>
                   <div className="flex flex-wrap justify-center gap-2">
                     {[
-                      "Review https://github.com/facebook/react/pull/31363",
-                      "Review vercel/next.js#12345",
+                      "Review https://github.com/quickfix/quickfix/pull/684",
+                      "Review https://github.com/expressjs/express/pull/6246",
                       "Save my github token ghp_...",
                     ].map((prompt) => (
                       <Button

@@ -1,235 +1,78 @@
-# Agent Starter
+# PR Review Agent
 
-![npm i agents command](./npm-agents-banner.svg)
+An AI-powered code review agent built on [Cloudflare's Agents platform](https://developers.cloudflare.com/agents/). Paste a GitHub PR URL into the chat and the agent fetches the PR, reads the diff, identifies bugs and issues, and can post the review back to GitHub with your approval.
 
-<a href="https://deploy.workers.cloudflare.com/?url=https://github.com/cloudflare/agents-starter"><img src="https://deploy.workers.cloudflare.com/button" alt="Deploy to Cloudflare"/></a>
+**Live:** https://pr-review-agent.talhamasood1011.workers.dev
 
-A starter template for building AI chat agents on Cloudflare, powered by the [Agents SDK](https://developers.cloudflare.com/agents/).
+## What it does
 
-Uses Workers AI (no API key required), with tools for weather, timezone detection, calculations with approval, and task scheduling.
+You give it a GitHub PR link (or shorthand like `owner/repo#123`). The agent then:
 
-## Quick start
+1. Calls the GitHub API to pull PR metadata — title, description, author, list of changed files
+2. Fetches the raw diff for the PR
+3. Reads through the changes, skipping trivial files like lockfiles and generated code
+4. Identifies bugs, security issues, performance problems, and style issues — each tagged with a severity level
+5. Presents a structured review in the chat
+6. Offers to post the review to GitHub, which triggers a confirmation dialog (you approve or reject before anything gets posted)
+
+You can also save a GitHub token so the agent can access private repos and post reviews on your behalf.
+
+## Agentic features
+
+- **Multi-step tool use** — the agent autonomously chains tool calls (fetch metadata → fetch diff → analyze → offer to post), deciding what to do at each step based on the previous result
+- **Decision-making** — inspects the file list and decides which files are worth reviewing vs. which to skip
+- **Human-in-the-loop** — the `postReview` tool requires explicit user approval before executing, using the Agents SDK's built-in approval flow
+- **Persistent memory** — past reviews are stored in a SQLite database (built into the Durable Object) and loaded into context for future reviews, so the agent can reference prior findings on the same repo
+
+## Assignment Requirements
+
+| Requirement | What's used |
+|---|---|
+| LLM | GLM-4.7-Flash on Workers AI |
+| Workflow / coordination | Agents SDK (`AIChatAgent`) on Durable Objects, orchestrating a multi-step tool pipeline |
+| User input via chat | WebSocket-based React chat UI using the `useAgentChat` hook |
+| Memory / state | Durable Object SQLite for review history and GitHub token storage |
+
+## Tools
+
+- **fetchPR** — hits `GET /repos/{owner}/{repo}/pulls/{number}` to get PR metadata
+- **fetchDiff** — hits the same endpoint with `Accept: application/vnd.github.v3.diff` to get the raw diff
+- **postReview** — `POST /repos/{owner}/{repo}/pulls/{number}/reviews` — requires user approval before executing
+- **setGithubToken** — saves a GitHub PAT in the Durable Object's SQLite database
+
+## Running locally
 
 ```bash
-npx create-cloudflare@latest --template cloudflare/agents-starter
-cd agents-starter
+git clone https://github.com/YOUR_USERNAME/pr-review-agent.git
+cd pr-review-agent
 npm install
-npm run dev
+npm start
 ```
 
-Open [http://localhost:5173](http://localhost:5173) to see your agent in action.
+Note: the AI binding uses `"remote": true` in `wrangler.jsonc`, so you need a Cloudflare account. No API keys are needed — Workers AI is included.
 
-Try these prompts to see the different features:
-
-- **"What's the weather in Paris?"** — server-side tool (runs automatically)
-- **"What timezone am I in?"** — client-side tool (browser provides the answer)
-- **"Calculate 5000 \* 3"** — approval tool (asks you before running)
-- **"Remind me in 5 minutes to take a break"** — scheduling
-
-## Project structure
-
-```
-src/
-  server.ts    # Chat agent with tools and scheduling
-  app.tsx      # Chat UI built with Kumo components
-  client.tsx   # React entry point
-  styles.css   # Tailwind + Kumo styles
-```
-
-## What's included
-
-- **AI Chat** — Streaming responses powered by Workers AI via `AIChatAgent`
-- **Three tool patterns** — server-side auto-execute, client-side (browser), and human-in-the-loop approval
-- **Scheduling** — one-time, delayed, and recurring (cron) tasks
-- **Reasoning display** — shows model thinking as it streams, collapses when done
-- **Debug mode** — toggle in the header to inspect raw message JSON for each message
-- **Kumo UI** — Cloudflare's design system with dark/light mode
-- **Real-time** — WebSocket connection with automatic reconnection and message persistence
-
-## Making it your own
-
-### Name your project
-
-Update the name in `package.json` and `wrangler.jsonc` — the `name` in `wrangler.jsonc` becomes your deployed Worker's URL (`<name>.<subdomain>.workers.dev`).
-
-### Change the system prompt
-
-Edit the `system` string in `server.ts` to give your agent a different personality or focus area. This is the most impactful single change you can make.
-
-### Replace the demo tools with real ones
-
-The starter ships with demo tools (`getWeather` returns random data, `calculate` does basic arithmetic). Replace them with real implementations:
-
-```ts
-// In server.ts, replace a demo tool with a real API call:
-getWeather: tool({
-  description: "Get the current weather for a city",
-  inputSchema: z.object({ city: z.string() }),
-  execute: async ({ city }) => {
-    const res = await fetch(`https://api.weather.example/${city}`);
-    return res.json();
-  }
-}),
-```
-
-### Add your own tools
-
-Add new tools to the `tools` object in `server.ts`. There are three patterns:
-
-```ts
-// Auto-execute: runs on the server, no user interaction
-myTool: tool({
-  description: "...",
-  inputSchema: z.object({ /* ... */ }),
-  execute: async (input) => { /* return result */ }
-}),
-
-// Client-side: no execute function, browser provides the result
-// Handle it in app.tsx via the onToolCall callback
-browserTool: tool({
-  description: "...",
-  inputSchema: z.object({ /* ... */ })
-}),
-
-// Approval: add needsApproval to gate execution
-sensitiveTool: tool({
-  description: "...",
-  inputSchema: z.object({ /* ... */ }),
-  needsApproval: async (input) => true, // or conditional logic
-  execute: async (input) => { /* runs after approval */ }
-}),
-```
-
-### Customize scheduled task behavior
-
-When a scheduled task fires, `executeTask` runs on the server. It does its work and then uses `this.broadcast()` to notify connected clients (shown as a toast notification in the UI). Replace it with your own logic:
-
-```ts
-async executeTask(description: string, task: Schedule<string>) {
-  // Do the actual work
-  await sendEmail({ to: "user@example.com", subject: description });
-
-  // Notify connected clients
-  this.broadcast(
-    JSON.stringify({ type: "scheduled-task", description, timestamp: new Date().toISOString() })
-  );
-}
-```
-
-> **Why `broadcast()` instead of `saveMessages()`?** Injecting into chat history can cause the AI to see the notification as new context and re-trigger the same task in a loop. `broadcast()` sends a one-off event that the client displays separately from the conversation.
-
-### Remove scheduling
-
-If you don't need scheduling, remove `scheduleTask`, `getScheduledTasks`, and `cancelScheduledTask` from the tools object, the `executeTask` method, and the schedule-related imports (`getSchedulePrompt`, `scheduleSchema`, `Schedule`, `generateId`).
-
-### Add state beyond chat messages
-
-Use `this.setState()` and `this.state` for real-time state that syncs to all connected clients. See [Store and sync state](https://developers.cloudflare.com/agents/api-reference/store-and-sync-state/).
-
-### Add callable methods
-
-Expose agent methods as typed RPC that your client can call directly:
-
-```ts
-import { callable } from "agents";
-
-export class ChatAgent extends AIChatAgent<Env> {
-  @callable()
-  async getStats() {
-    return { messageCount: this.messages.length };
-  }
-}
-
-// Client-side:
-const stats = await agent.call("getStats");
-```
-
-See [Callable methods](https://developers.cloudflare.com/agents/api-reference/callable-methods/).
-
-### Connect to MCP servers
-
-Add external tools from MCP servers:
-
-```ts
-async onChatMessage(onFinish, options) {
-  // Connect to an MCP server
-  await this.mcp.connect("https://my-mcp-server.example/sse");
-
-  const result = streamText({
-    // ...
-    tools: {
-      ...myTools,
-      ...this.mcp.getAITools() // Include MCP tools
-    }
-  });
-}
-```
-
-See [MCP Client API](https://developers.cloudflare.com/agents/api-reference/mcp-client-api/).
-
-## Use a different AI model provider
-
-The starter uses [Workers AI](https://developers.cloudflare.com/workers-ai/) by default (no API key needed). To use a different provider:
-
-### OpenAI
-
-```bash
-npm install @ai-sdk/openai
-```
-
-```ts
-// In server.ts, replace the model:
-import { openai } from "@ai-sdk/openai";
-
-// Inside onChatMessage:
-const result = streamText({
-  model: openai("gpt-5.2")
-  // ...
-});
-```
-
-Create a `.env` file with your API key:
-
-```
-OPENAI_API_KEY=your-key-here
-```
-
-### Anthropic
-
-```bash
-npm install @ai-sdk/anthropic
-```
-
-```ts
-import { anthropic } from "@ai-sdk/anthropic";
-
-const result = streamText({
-  model: anthropic("claude-sonnet-4-20250514")
-  // ...
-});
-```
-
-Create a `.env` file with your API key:
-
-```
-ANTHROPIC_API_KEY=your-key-here
-```
-
-## Deploy
+## Deploying
 
 ```bash
 npm run deploy
 ```
 
-Your agent is live on Cloudflare's global network. Messages persist in SQLite, streams resume on disconnect, and the agent hibernates when idle.
+This builds the Vite frontend and deploys everything to Cloudflare Workers.
 
-## Learn more
+## Project structure
 
-- [Agents SDK documentation](https://developers.cloudflare.com/agents/)
-- [Build a chat agent tutorial](https://developers.cloudflare.com/agents/getting-started/build-a-chat-agent/)
-- [Chat agents API reference](https://developers.cloudflare.com/agents/api-reference/chat-agents/)
-- [Workers AI models](https://developers.cloudflare.com/workers-ai/models/)
+```
+src/
+├── server.ts    # Agent: system prompt, tool definitions, state/memory
+├── app.tsx      # Chat UI with tool approval and MCP panel
+├── client.tsx   # React entry point
+└── styles.css   # Tailwind + Kumo theme
+```
 
-## License
+## Stack
 
-MIT
+- Cloudflare Workers + Durable Objects
+- Cloudflare Agents SDK (`AIChatAgent`)
+- Workers AI via `workers-ai-provider`
+- Vercel AI SDK v6
+- React + Kumo (Cloudflare's component library) + Vite

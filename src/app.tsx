@@ -291,21 +291,7 @@ function Chat() {
     stop,
     status
   } = useAgentChat({
-    agent,
-    onToolCall: async (event) => {
-      if (
-        "addToolOutput" in event &&
-        event.toolCall.toolName === "getUserTimezone"
-      ) {
-        event.addToolOutput({
-          toolCallId: event.toolCall.toolCallId,
-          output: {
-            timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-            localTime: new Date().toLocaleTimeString()
-          }
-        });
-      }
-    }
+    agent
   });
 
   const isStreaming = status === "streaming" || status === "submitted";
@@ -338,11 +324,11 @@ function Chat() {
         <div className="max-w-3xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-3">
             <h1 className="text-lg font-semibold text-kumo-default">
-              <span className="mr-2">⛅</span>Agent Starter
+              <span className="mr-2">🔍</span>PR Review Agent
             </h1>
             <Badge variant="secondary">
-              <ChatCircleDotsIcon size={12} weight="bold" className="mr-1" />
-              AI Chat
+              <BugIcon size={12} weight="bold" className="mr-1" />
+              Code Review
             </Badge>
           </div>
           <div className="flex items-center gap-3">
@@ -547,31 +533,35 @@ function Chat() {
         <div className="max-w-3xl mx-auto px-5 py-6 space-y-5">
           {messages.length === 0 && (
             <Empty
-              icon={<ChatCircleDotsIcon size={32} />}
-              title="Start a conversation"
+              icon={<BugIcon size={32} />}
+              title="PR Review Agent"
               contents={
-                <div className="flex flex-wrap justify-center gap-2">
-                  {[
-                    "What's the weather in Paris?",
-                    "What timezone am I in?",
-                    "Calculate 5000 * 3",
-                    "Remind me in 5 minutes to take a break"
-                  ].map((prompt) => (
-                    <Button
-                      key={prompt}
-                      variant="outline"
-                      size="sm"
-                      disabled={isStreaming}
-                      onClick={() => {
-                        sendMessage({
-                          role: "user",
-                          parts: [{ type: "text", text: prompt }]
-                        });
-                      }}
-                    >
-                      {prompt}
-                    </Button>
-                  ))}
+                <div className="space-y-3">
+                  <p className="text-sm text-kumo-subtle">
+                    Paste a GitHub PR URL to get an automated code review.
+                  </p>
+                  <div className="flex flex-wrap justify-center gap-2">
+                    {[
+                      "Review https://github.com/facebook/react/pull/31363",
+                      "Review vercel/next.js#12345",
+                      "Save my github token ghp_...",
+                    ].map((prompt) => (
+                      <Button
+                        key={prompt}
+                        variant="outline"
+                        size="sm"
+                        disabled={isStreaming}
+                        onClick={() => {
+                          sendMessage({
+                            role: "user",
+                            parts: [{ type: "text", text: prompt }]
+                          });
+                        }}
+                      >
+                        {prompt}
+                      </Button>
+                    ))}
+                  </div>
                 </div>
               }
             />
@@ -707,7 +697,7 @@ function Chat() {
                 el.style.height = "auto";
                 el.style.height = `${el.scrollHeight}px`;
               }}
-              placeholder="Send a message..."
+              placeholder="Paste a GitHub PR URL to review..."
               disabled={!connected || isStreaming}
               rows={1}
               className="flex-1 ring-0! focus:ring-0! shadow-none! bg-transparent! outline-none! resize-none max-h-40"
